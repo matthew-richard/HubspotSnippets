@@ -1,0 +1,104 @@
+<?php
+include_once 'constants.php';
+include_once 'hooks/block_info.php';
+include_once 'hooks/block_view.php';
+include_once 'hooks/entity_info_alter.php';
+include_once 'hooks/form_alter.php';
+include_once 'hooks/image_default_styles.php';
+include_once 'hooks/menu.php';
+include_once 'hooks/node_insert.php';
+include_once 'hooks/node_update.php';
+include_once 'hooks/theme.php';
+include_once 'forms/company.contact_us.php';
+include_once 'forms/company.tlx_contact.php';
+include_once 'forms/company.defense_intel.php';
+include_once 'forms/company.infocomm_training.php';
+include_once 'forms/company.request_a_quote.php';
+include_once 'forms/company.partner_application.php';
+include_once 'forms/company.sign_up.php';
+include_once 'forms/company.newsletters.php';
+include_once 'forms/company.file_download_info.php';
+
+function company_get_real_file_path_by_secure() {
+    $arg = arg();
+	if ($arg[0] == 'system') {
+		$arg[0] = 'sites/default/secure';
+		unset($arg[1]);
+	} else {
+		unset($arg[0]);
+	}
+    return implode('/', $arg);
+}
+function company_download_file($file_name) {
+    $file_base = basename($file_name);
+    drupal_add_http_header('Content-Type', file_get_mimetype($_SERVER['DOCUMENT_ROOT'].'sites/default/files/'.$file_base).'; utf-8');
+    drupal_add_http_header('Content-disposition', 'attachment; filename="'.str_replace('"', '', $file_base).'"');
+    //drupal_add_http_header('Content-disposition', 'attachment; filename='.$_SERVER['DOCUMENT_ROOT'].'sites/default/files/'.rawurlencode($file_base));
+    //readfile($_SERVER['DOCUMENT_ROOT'].'sites/default/files/'.$file_base);
+    readfile('sites/default/files/'.$file_base);
+}
+
+function company_push_to_sugar() {
+  print_r($_POST);
+  
+  // Values extracted form the request
+  $values = array();
+  
+  // Capture required fields
+  $required = array(
+    'first' => 'firstname',
+    'last' => 'lastname',
+    'company' => 'company',
+    'email' => 'email',
+    'country' => 'tl_country',
+    'market' => 'end_user_s_market',
+    'type' => 'your_role',
+  );
+  
+  foreach($required as $newField => $oldField) {
+    $values[$newField] = $_POST[$oldField];
+  }
+  
+  // Newsletter opt-in
+  $values['optin'] = (isset($_POST['newsletter_signup']) && $_POST['newsletter_signup'] === 'true') ? 'Yes' : 'No';
+  
+  // Capture optional fields if they're present
+  $optional = array(
+    'phone' => 'phone',
+    'city' => 'city',
+    'state' => 'state'
+  );
+  
+  foreach($optional as $newField => $oldField) {
+    if (isset($_POST[$oldField])) {
+      $values[$newField] = $_POST[$oldField];
+    }
+  }
+  
+  // Capture form-specific fields (e.g. "Message" field in
+  // Contact Us form) by appending them to the
+  // description field.
+  $extras = array(
+    'are_your_requirements_for_a_build_out' => 'Build Out Requirements (Specified while user requested a quote)',
+    'request_a_quote_timeline' => 'Timeline',
+    'message' => 'Message',
+    'downloaded_white_paper' => 'File Downloaded'
+  );
+  
+  $values['desc'] = '';
+  foreach($extras as $field => $title) {
+    if(isset($_POST[$field])) {
+      $values['desc'] .= "\n\r" . $title . ": " . $_POST[$field];
+    }
+  }
+
+  print_r($values);
+  
+  // Attempt to push captured fields to Sugar CRM.
+  $result = tl_sugar_webtolead($values['first'], $values['last'], $values['company'], $values['email'], $values['phone'],
+    $values['city'], $values['state'], $values['country'], $values['desc'], $values['market'], $values['type'], $values['optin']);
+  printf("\r\nSugar submission result: %s", $result);
+  
+  watchdog('company', sprintf('Attempted to submit form submission to Sugar. User email: %s. Submission result: %d.', $values['email'], $result));
+}
+
